@@ -1,0 +1,36 @@
+name: Windows RDP via Tailscale
+
+on: 
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+    - name: Download & Install Tailscale
+      run: |
+        Invoke-WebRequest -Uri https://tailscale.com -OutFile tailscale-setup.exe
+        Start-Process -FilePath .\tailscale-setup.exe -ArgumentList "/quiet" -Wait
+        
+    - name: Connect to Tailscale Network
+      shell: cmd
+      env:
+        TAILSCALE_AUTHKEY: ${{ secrets.TAILSCALE_AUTHKEY }}
+      run: |
+        set PATH=%PATH%;"C:\Program Files\Tailscale"
+        tailscale up --authkey=%TAILSCALE_AUTHKEY% --accept-routes
+        
+    - name: Enable Remote Desktop & Set Password
+      run: |
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+        Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 1
+        $Password = ConvertTo-SecureString "YourSecurePassword123!" -AsPlainText -Force
+        Set-LocalUser -Name "runneradmin" -Password $Password
+
+    - name: Keep Active (Up to 6 Hours)
+      run: |
+        Write-Host "Tailscale IP for this runner:"
+        & "C:\Program Files\Tailscale\tailscale.exe" ip -4
+        Write-Host "RDP is ready. The session will automatically terminate after 6 hours."
+        Start-Sleep -Seconds 21600
